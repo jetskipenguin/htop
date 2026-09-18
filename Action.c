@@ -23,12 +23,12 @@ in the source distribution for its full text.
 #include "EnvScreen.h"
 #include "FunctionBar.h"
 #include "Hashtable.h"
+#include "HelpScreen.h"
 #include "IncSet.h"
 #include "InfoScreen.h"
 #include "ListItem.h"
 #include "Macros.h"
 #include "MainPanel.h"
-#include "MemoryMeter.h"
 #include "Object.h"
 #include "OpenFilesScreen.h"
 #include "Panel.h"
@@ -698,211 +698,11 @@ static Htop_Reaction actionTogglePauseUpdate(State* st) {
    return HTOP_REFRESH | HTOP_REDRAW_BAR | HTOP_KEEP_FOLLOWING;
 }
 
-static const struct {
-   const char* key;
-   bool roInactive;
-   const char* info;
-} helpLeft[] = {
-   { .key = "      #: ",  .roInactive = false, .info = "hide/show header meters" },
-   { .key = "    Tab: ",  .roInactive = false, .info = "switch to next screen tab" },
-   { .key = " Arrows: ",  .roInactive = false, .info = "scroll process list" },
-   { .key = " Digits: ",  .roInactive = false, .info = "incremental PID search" },
-   { .key = "   F3 /: ",  .roInactive = false, .info = "incremental name search" },
-   { .key = "   F4 \\: ", .roInactive = false, .info = "incremental name filtering" },
-   { .key = "   F5 t: ",  .roInactive = false, .info = "tree view" },
-   { .key = "      p: ",  .roInactive = false, .info = "toggle program path" },
-   { .key = "      m: ",  .roInactive = false, .info = "toggle merged command" },
-   { .key = "      Z: ",  .roInactive = false, .info = "pause/resume process updates" },
-   { .key = "      u: ",  .roInactive = false, .info = "show processes of a single user" },
-   { .key = "      H: ",  .roInactive = false, .info = "hide/show user process threads" },
-   { .key = "      K: ",  .roInactive = false, .info = "hide/show kernel threads" },
-   { .key = "      O: ",  .roInactive = false, .info = "hide/show processes in containers" },
-   { .key = "      F: ",  .roInactive = false, .info = "cursor follows process" },
-   { .key = "  + - *: ",  .roInactive = false, .info = "expand/collapse tree/toggle all" },
-   { .key = "N P M T: ",  .roInactive = false, .info = "sort by PID, CPU%, MEM% or TIME" },
-   { .key = "      I: ",  .roInactive = false, .info = "invert sort order" },
-   { .key = " F6 > .: ",  .roInactive = false, .info = "select sort column" },
-   { .key = NULL, .info = NULL }
-};
-
-static const struct {
-   const char* key;
-   bool roInactive;
-   const char* info;
-} helpRight[] = {
-   { .key = "  S-Tab: ", .roInactive = false, .info = "switch to previous screen tab" },
-   { .key = "  Space: ", .roInactive = false, .info = "tag process" },
-   { .key = "      c: ", .roInactive = false, .info = "tag process and its children" },
-   { .key = "      U: ", .roInactive = false, .info = "untag all processes" },
-   { .key = "   F9 k: ", .roInactive = true,  .info = "kill process/tagged processes" },
-   { .key = "   F7 ]: ", .roInactive = true,  .info = "higher priority (root only)" },
-   { .key = "   F8 [: ", .roInactive = true,  .info = "lower priority (+ nice)" },
-#if (defined(HAVE_LIBHWLOC) || defined(HAVE_AFFINITY))
-   { .key = "      a: ", .roInactive = true, .info = "set CPU affinity" },
-#endif
-#if defined(HAVE_BACKTRACE_SCREEN)
-   { .key = "      b: ", .roInactive = false, .info = "show process backtrace" },
-#endif
-   { .key = "      e: ", .roInactive = false, .info = "show process environment" },
-   { .key = "      i: ", .roInactive = true,  .info = "set IO priority" },
-   { .key = "      l: ", .roInactive = true,  .info = "list open files with lsof" },
-   { .key = "      x: ", .roInactive = false, .info = "list file locks of process" },
-   { .key = "      s: ", .roInactive = true,  .info = "trace syscalls with strace" },
-   { .key = "      w: ", .roInactive = false, .info = "wrap process command in multiple lines" },
-#ifdef SCHEDULER_SUPPORT
-   { .key = "      Y: ", .roInactive = true,  .info = "set scheduling policy" },
-#endif
-   { .key = " F2 C S: ", .roInactive = false, .info = "setup" },
-   { .key = " F1 h ?: ", .roInactive = false, .info = "show this help screen" },
-   { .key = "  F10 q: ", .roInactive = false, .info = "quit" },
-   { .key = NULL, .info = NULL }
-};
-
-static inline void addattrstr( int attr, const char* str) {
-   attrset(attr);
-   addstr(str);
-}
-
 static Htop_Reaction actionHelp(State* st) {
-   clear();
-   attrset(CRT_colors[HELP_BOLD]);
-
-   for (int i = 0; i < LINES - 1; i++)
-      mvhline(i, 0, ' ', COLS);
-
-   int line = 0;
-
-   mvaddstr(line++, 0, "htop " VERSION " - " COPYRIGHT);
-   mvaddstr(line++, 0, "Released under the GNU GPLv2+. See 'man' page for more info.");
-
-   attrset(CRT_colors[DEFAULT_COLOR]);
-   line++;
-   mvaddstr(line++, 0, "CPU usage bar: ");
-
-#define addbartext(attr, prefix, text)               \
-   do {                                              \
-      addattrstr(CRT_colors[DEFAULT_COLOR], prefix); \
-      addattrstr(attr, text);                        \
-   } while(0)
-
-   addattrstr(CRT_colors[BAR_BORDER], "[");
-   addbartext(CRT_colors[CPU_NICE_TEXT], "", "low");
-   addbartext(CRT_colors[CPU_NORMAL], "/", "normal");
-   addbartext(CRT_colors[CPU_SYSTEM], "/", "kernel");
-   if (st->host->settings->detailedCPUTime) {
-      addbartext(CRT_colors[CPU_IRQ], "/", "irq");
-      addbartext(CRT_colors[CPU_SOFTIRQ], "/", "soft-irq");
-      addbartext(CRT_colors[CPU_STEAL], "/", "steal");
-      addbartext(CRT_colors[CPU_GUEST], "/", "guest");
-      addbartext(CRT_colors[CPU_IOWAIT], "/", "io-wait");
-      addbartext(CRT_colors[BAR_SHADOW], " ", "used%");
-   } else {
-      addbartext(CRT_colors[CPU_GUEST], "/", "virt");
-      addbartext(CRT_colors[BAR_SHADOW], "                             ", "used%");
-   }
-   addattrstr(CRT_colors[BAR_BORDER], "]");
-
-   attrset(CRT_colors[DEFAULT_COLOR]);
-   mvaddstr(line++, 0, "Memory bar:    ");
-   addattrstr(CRT_colors[BAR_BORDER], "[");
-   // memory classes are OS-specific and provided in their <os>/Platform.c implementation
-   // ideal length of memory bar == 56 chars. Any length < 45 requires padding to 45.
-   // [0        1         2         3         4         5      ]
-   // [12345678901234567890123456789012345678901234567890123456]
-   // [                                            ^    5      ]
-   // [class1/class2/class3/.../classN               used/total]
-   int barTxtLen = 0;
-   for (unsigned int i = 0; i < Platform_numberOfMemoryClasses; i++) {
-      if (!st->host->settings->showCachedMemory && Platform_memoryClasses[i].countsAsCache)
-         continue; // skip reclaimable cache memory classes if "show cached memory" is not ticked
-      if (!Platform_memoryClasses[i].countsAsUsed && !Platform_memoryClasses[i].countsAsCache)
-         continue; // skip available memory class (special case for the Linux platform)
-      addbartext(CRT_colors[Platform_memoryClasses[i].color], (i == 0 ? "" : "/"), Platform_memoryClasses[i].label);
-      barTxtLen += (i == 0 ? 0 : 1) + strlen (Platform_memoryClasses[i].label);
-   }
-   for (int i = barTxtLen; i < 45; i++)
-      addattrstr(CRT_colors[BAR_SHADOW], " "); // pad to 45 chars if necessary
-   addbartext(CRT_colors[BAR_SHADOW], " ", "used");
-   addbartext(CRT_colors[BAR_SHADOW], "/", "total");
-   addattrstr(CRT_colors[BAR_BORDER], "]");
-
-   attrset(CRT_colors[DEFAULT_COLOR]);
-   mvaddstr(line++, 0, "Swap bar:      ");
-   addattrstr(CRT_colors[BAR_BORDER], "[");
-   addbartext(CRT_colors[SWAP], "", "used");
-#ifdef HTOP_LINUX
-   addbartext(CRT_colors[SWAP_CACHE], "/", "cache");
-   addbartext(CRT_colors[SWAP_FRONTSWAP], "/", "frontswap");
-#else
-   addbartext(CRT_colors[BAR_SHADOW], "                ", "");
-#endif
-   addbartext(CRT_colors[BAR_SHADOW], "                          ", "used");
-   addbartext(CRT_colors[BAR_SHADOW], "/", "total");
-   addattrstr(CRT_colors[BAR_BORDER], "]");
-
-   line++;
-
-#undef addbartext
-
-   attrset(CRT_colors[DEFAULT_COLOR]);
-   mvaddstr(line++, 0, "Type and layout of header meters are configurable in the setup screen.");
-   if (CRT_colorScheme == COLORSCHEME_MONOCHROME) {
-      mvaddstr(line, 0, "In monochrome, meters display as different chars, in order: |#*@$%&.");
-   }
-   line++;
-
-#define addattrstatestr(attr, state, desc)              \
-   do {                                                 \
-      addattrstr(attr, state);                          \
-      addattrstr(CRT_colors[DEFAULT_COLOR], ": " desc); \
-   } while(0)
-
-   mvaddstr(line, 0, "Process state: ");
-   addattrstatestr(CRT_colors[PROCESS_RUN_STATE], "R", "running; ");
-   addattrstatestr(CRT_colors[PROCESS_SHADOW], "S", "sleeping; ");
-   addattrstatestr(CRT_colors[PROCESS_RUN_STATE], "t", "traced/stopped; ");
-   addattrstatestr(CRT_colors[PROCESS_D_STATE], "Z", "zombie; ");
-   addattrstatestr(CRT_colors[PROCESS_D_STATE], "D", "disk sleep");
-   attrset(CRT_colors[DEFAULT_COLOR]);
-
-#undef addattrstatestr
-
-   line += 2;
-
-   const bool readonly = Settings_isReadonly();
-
-   int item;
-   for (item = 0; helpLeft[item].key; item++) {
-      attrset((helpLeft[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[DEFAULT_COLOR]);
-      mvaddstr(line + item, 10, helpLeft[item].info);
-      attrset((helpLeft[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[HELP_BOLD]);
-      mvaddstr(line + item, 1,  helpLeft[item].key);
-      if (String_eq(helpLeft[item].key, "      H: ")) {
-         attrset((helpLeft[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[PROCESS_THREAD]);
-         mvaddstr(line + item, 33, "threads");
-      } else if (String_eq(helpLeft[item].key, "      K: ")) {
-         attrset((helpLeft[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[PROCESS_THREAD]);
-         mvaddstr(line + item, 27, "threads");
-      }
-   }
-   int leftHelpItems = item;
-
-   for (item = 0; helpRight[item].key; item++) {
-      attrset((helpRight[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[HELP_BOLD]);
-      mvaddstr(line + item, 43, helpRight[item].key);
-      attrset((helpRight[item].roInactive && readonly) ? CRT_colors[HELP_SHADOW] : CRT_colors[DEFAULT_COLOR]);
-      mvaddstr(line + item, 52, helpRight[item].info);
-   }
-   line += MAXIMUM(leftHelpItems, item);
-   line++;
-
-   attrset(CRT_colors[HELP_BOLD]);
-   mvaddstr(line++, 0, "Press any key to return.");
-   attrset(CRT_colors[DEFAULT_COLOR]);
-   refresh();
-   CRT_readKey();
-   clear();
-
+   HelpScreen screen;
+   HelpScreen_init(&screen, st->host->settings);
+   HelpScreen_run(&screen);
+   HelpScreen_done(&screen);
    return HTOP_RECALCULATE | HTOP_REDRAW_BAR | HTOP_KEEP_FOLLOWING;
 }
 
