@@ -26,6 +26,9 @@ in the source distribution for its full text.
 #include "Settings.h"
 #include "XUtils.h"
 
+static const char* const funcBarLabels[] = {" Done ", " Down ", " Up "};
+static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow "};
+static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP};
 
 enum {
    HELP_LEFT_COLUMN = 1,
@@ -364,7 +367,7 @@ static void HelpScreen_addShortcuts(HelpScreen* self) {
 
 HelpScreen* HelpScreen_init(HelpScreen* self, const Settings* settings) {
    // TODO: Add all functions to bar
-   FunctionBar* bar = FunctionBar_newEnterEsc("Done   ", "Done   ");
+   FunctionBar* bar = FunctionBar_new(funcBarLabels, funcBarKeys, funcBarEvents);
    self->display = Panel_new(0, 0, COLS, MAXIMUM(LINES - 1, 1), Class(HelpLine), true, bar);
    HelpScreen_addText(self, HELP_BOLD, "htop " VERSION " - " COPYRIGHT);
    HelpScreen_addText(self, HELP_BOLD, "Released under the GNU GPLv2+. See 'man' page for more info.");
