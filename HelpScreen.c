@@ -26,9 +26,9 @@ in the source distribution for its full text.
 #include "Settings.h"
 #include "XUtils.h"
 
-static const char* const funcBarLabels[] = {" Done ", " Down ", " Up "};
-static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow "};
-static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP};
+static const char* const funcBarLabels[] = {" Done ", " Down ", " Up ", " Next"};
+static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow ", " Space "};
+static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP, ' '};
 
 enum {
    HELP_LEFT_COLUMN = 1,
@@ -365,6 +365,17 @@ static void HelpScreen_addShortcuts(HelpScreen* self) {
    }
 }
 
+static void HelpScreen_scroll(Panel* panel, int amount) {
+   int maxScroll = MAXIMUM(0, Panel_size(panel) - panel->h);
+   panel->scrollV = CLAMP(panel->scrollV + amount, 0, maxScroll);
+   panel->selected = panel->scrollV;
+   panel->needsRedraw = true;
+}
+
+static bool HelpScreen_atBottom(const Panel* panel) {
+   return panel->scrollV >= MAXIMUM(0, Panel_size(panel) - panel->h);
+}
+
 HelpScreen* HelpScreen_init(HelpScreen* self, const Settings* settings) {
    // TODO: Add all functions to bar
    FunctionBar* bar = FunctionBar_new(funcBarLabels, funcBarKeys, funcBarEvents);
@@ -414,6 +425,20 @@ void HelpScreen_run(HelpScreen* self) {
             Panel_resize(panel, COLS, MAXIMUM(LINES - 1, 1));
             clear();
             break;
+         case KEY_PPAGE:
+         case KEY_UP:
+            HelpScreen_scroll(panel, -1);
+            break;
+         case KEY_NPAGE:
+         case KEY_DOWN:
+            HelpScreen_scroll(panel, 1);
+            break;
+         case ' ':
+            HelpScreen_scroll(panel, 1);
+            if (HelpScreen_atBottom(panel)) {
+               clear();
+               return;
+            }
          case KEY_CTRL('L'):
             clear();
             break;
