@@ -16,8 +16,10 @@ in the source distribution for its full text.
 #include "CRT.h"
 #include "FunctionBar.h"
 #include "Macros.h"
+#include "MemoryMeter.h"
 #include "Object.h"
 #include "Panel.h"
+#include "Platform.h"
 #include "ProvideCurses.h"
 #include "RichString.h"
 #include "Scheduling.h"
@@ -29,6 +31,8 @@ enum {
    HELP_LEFT_COLUMN = 1,
    HELP_RIGHT_COLUMN = 43,
    HELP_ENTRY_SEGMENTS = 3,
+   HELP_BAR_LABEL_WIDTH = 15,
+   HELP_BAR_WIDTH = 56,
 };
 
 typedef struct HelpEntry_ {
@@ -92,6 +96,146 @@ static HelpLine* HelpLine_new(const HelpLineSegment* segments, size_t count) {
    }
 
    return this;
+}
+
+// Copy each appended segment so temporary text can be released by the caller.
+static void HelpLine_append(HelpLine* this, int attr, const char* text) {
+   this->segments = xReallocArray(this->segments, this->count + 1, sizeof(*this->segments));
+   this->segments[this->count].attr = attr;
+   this->segments[this->count].text = xStrdup(text);
+   this->count++;
+}
+
+static size_t HelpLine_getWidth(const HelpLine* this) {
+   // The labels used for bar alignment are ASCII.
+   size_t width = 0;
+   for (size_t i = 0; i < this->count; i++)
+      width += strlen(this->segments[i].text);
+   return width;
+}
+
+static void HelpLine_padTo(HelpLine* this, size_t column) {
+   size_t width = HelpLine_getWidth(this);
+   if (width >= column)
+      return;
+
+   size_t gap = column - width;
+   char* padding = xMalloc(gap + 1);
+   memset(padding, ' ', gap);
+   padding[gap] = '\0';
+   HelpLine_append(this, CRT_colors[DEFAULT_COLOR], padding);
+   free(padding);
+}
+
+static void HelpScreen_addText(HelpScreen* self, ColorElements color, const char* text) {
+   const HelpLineSegment segment = { .attr = CRT_colors[color], .text = text };
+   Panel_add(self->display, (Object*)HelpLine_new(&segment, 1));
+}
+
+static void HelpScreen_addBlankLine(HelpScreen* self) {
+   Panel_add(self->display, (Object*)HelpLine_new(NULL, 0));
+}
+
+static HelpLine* HelpLine_newBar(const char* label) {
+   HelpLine* line = HelpLine_new(NULL, 0);
+   HelpLine_append(line, CRT_colors[DEFAULT_COLOR], label);
+   HelpLine_padTo(line, HELP_BAR_LABEL_WIDTH);
+   HelpLine_append(line, CRT_colors[BAR_BORDER], "[");
+   return line;
+}
+
+static void HelpLine_appendBarText(HelpLine* line, ColorElements color, const char* prefix, const char* text) {
+   if (*prefix)
+      HelpLine_append(line, CRT_colors[DEFAULT_COLOR], prefix);
+   HelpLine_append(line, CRT_colors[color], text);
+}
+
+static HelpLine* HelpLine_newCPULegend(const Settings* settings) {
+   HelpLine* line = HelpLine_newBar("CPU usage bar: ");
+   HelpLine_appendBarText(line, CPU_NICE_TEXT, "", "low");
+   HelpLine_appendBarText(line, CPU_NORMAL, "/", "normal");
+   HelpLine_appendBarText(line, CPU_SYSTEM, "/", "kernel");
+   if (settings->detailedCPUTime) {
+      HelpLine_appendBarText(line, CPU_IRQ, "/", "irq");
+      HelpLine_appendBarText(line, CPU_SOFTIRQ, "/", "soft-irq");
+      HelpLine_appendBarText(line, CPU_STEAL, "/", "steal");
+      HelpLine_appendBarText(line, CPU_GUEST, "/", "guest");
+      HelpLine_appendBarText(line, CPU_IOWAIT, "/", "io-wait");
+   } else {
+      HelpLine_appendBarText(line, CPU_GUEST, "/", "virt");
+   }
+   return line;
+}
+
+static HelpLine* HelpLine_newMemoryLegend(const Settings* settings) {
+   HelpLine* line = HelpLine_newBar("Memory bar: ");
+   bool first = true;
+   for (unsigned int i = 0; i < Platform_numberOfMemoryClasses; i++) {
+      const MemoryClass* cls = &Platform_memoryClasses[i];
+      if (!settings->showCachedMemory && cls->countsAsCache)
+         continue;
+      if (!cls->countsAsUsed && !cls->countsAsCache)
+         continue;
+      HelpLine_appendBarText(line, cls->color, first ? "" : "/", cls->label);
+      first = false;
+   }
+   return line;
+}
+
+static HelpLine* HelpLine_newSwapLegend(void) {
+   HelpLine* line = HelpLine_newBar("Swap bar: ");
+   HelpLine_appendBarText(line, SWAP, "", "used");
+#ifdef HTOP_LINUX
+   HelpLine_appendBarText(line, SWAP_CACHE, "/", "cache");
+   HelpLine_appendBarText(line, SWAP_FRONTSWAP, "/", "frontswap");
+#endif
+   return line;
+}
+
+static void HelpScreen_addMeterLegends(HelpScreen* self, const Settings* settings) {
+   const struct {
+      HelpLine* line;
+      bool total;
+   } bars[] = {
+      { .line = HelpLine_newCPULegend(settings), .total = false },
+      { .line = HelpLine_newMemoryLegend(settings), .total = true },
+      { .line = HelpLine_newSwapLegend(), .total = true },
+   };
+
+   // Keep a shared closing column, allowing long platform labels to expand all bars.
+   size_t end = HELP_BAR_LABEL_WIDTH + 1 + HELP_BAR_WIDTH;
+   for (size_t i = 0; i < ARRAYSIZE(bars); i++) {
+      size_t suffixWidth = strlen(bars[i].total ? "used/total" : "used%");
+      end = MAXIMUM(end, HelpLine_getWidth(bars[i].line) + 1 + suffixWidth);
+   }
+
+   for (size_t i = 0; i < ARRAYSIZE(bars); i++) {
+      HelpLine* line = bars[i].line;
+      size_t suffixWidth = strlen(bars[i].total ? "used/total" : "used%");
+      HelpLine_padTo(line, end - suffixWidth);
+      HelpLine_append(line, CRT_colors[BAR_SHADOW], bars[i].total ? "used" : "used%");
+      if (bars[i].total)
+         HelpLine_appendBarText(line, BAR_SHADOW, "/", "total");
+      HelpLine_append(line, CRT_colors[BAR_BORDER], "]");
+      Panel_add(self->display, (Object*)line);
+   }
+}
+
+static void HelpScreen_addProcessStates(HelpScreen* self) {
+   const HelpLineSegment segments[] = {
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = "Process state: " },
+      { .attr = CRT_colors[PROCESS_RUN_STATE], .text = "R" },
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = ": running; " },
+      { .attr = CRT_colors[PROCESS_SHADOW], .text = "S" },
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = ": sleeping; " },
+      { .attr = CRT_colors[PROCESS_RUN_STATE], .text = "t" },
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = ": traced/stopped; " },
+      { .attr = CRT_colors[PROCESS_D_STATE], .text = "Z" },
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = ": zombie; " },
+      { .attr = CRT_colors[PROCESS_D_STATE], .text = "D" },
+      { .attr = CRT_colors[DEFAULT_COLOR], .text = ": disk sleep" },
+   };
+   Panel_add(self->display, (Object*)HelpLine_new(segments, ARRAYSIZE(segments)));
 }
 
 static const HelpEntry helpLeft[] = {
@@ -179,9 +323,6 @@ static size_t HelpEntry_getSegments(const HelpEntry* entry, bool readonly, HelpL
 }
 
 static HelpLine* HelpLine_newShortcutRow(const HelpEntry* left, const HelpEntry* right, bool readonly, size_t rightColumn) {
-   if (!left && !right)
-      return HelpLine_new(NULL, 0);
-
    HelpLineSegment segments[2 + 2 * HELP_ENTRY_SEGMENTS];
    char margin[HELP_LEFT_COLUMN + 1];
    memset(margin, ' ', HELP_LEFT_COLUMN);
@@ -219,18 +360,23 @@ static void HelpScreen_addShortcuts(HelpScreen* self) {
       const HelpEntry* right = i < ARRAYSIZE(helpRight) ? &helpRight[i] : NULL;
       Panel_add(self->display, (Object*)HelpLine_newShortcutRow(left, right, readonly, rightColumn));
    }
-
-   // TODO: we may not need this because function bar will have keys for exiting
-   HelpLineSegment paddingSegment = (HelpLineSegment) { .attr = CRT_colors[DEFAULT_COLOR], .text = " " };
-   Panel_add(self->display, (Object*)HelpLine_new( &paddingSegment, 1));
-   HelpLineSegment escHelpText = (HelpLineSegment) { .attr = CRT_colors[DEFAULT_COLOR], .text = "Press escape or enter to return." };
-   Panel_add(self->display, (Object*)HelpLine_new( &escHelpText, 1));
 }
 
-HelpScreen* HelpScreen_init(HelpScreen* self) {
+HelpScreen* HelpScreen_init(HelpScreen* self, const Settings* settings) {
    // TODO: Add all functions to bar
    FunctionBar* bar = FunctionBar_newEnterEsc("Done   ", "Done   ");
    self->display = Panel_new(0, 0, COLS, MAXIMUM(LINES - 1, 1), Class(HelpLine), true, bar);
+   HelpScreen_addText(self, HELP_BOLD, "htop " VERSION " - " COPYRIGHT);
+   HelpScreen_addText(self, HELP_BOLD, "Released under the GNU GPLv2+. See 'man' page for more info.");
+   HelpScreen_addBlankLine(self);
+   HelpScreen_addMeterLegends(self, settings);
+   HelpScreen_addBlankLine(self);
+   HelpScreen_addText(self, DEFAULT_COLOR, "Type and layout of header meters are configurable in the setup screen.");
+   if (CRT_colorScheme == COLORSCHEME_MONOCHROME)
+      HelpScreen_addText(self, DEFAULT_COLOR, "In monochrome, meters display as different chars, in order: |#*@$%&.");
+   HelpScreen_addBlankLine(self);
+   HelpScreen_addProcessStates(self);
+   HelpScreen_addBlankLine(self);
    HelpScreen_addShortcuts(self);
 
    clear();
