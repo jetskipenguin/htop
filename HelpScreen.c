@@ -26,8 +26,8 @@ in the source distribution for its full text.
 #include "Settings.h"
 #include "XUtils.h"
 
-static const char* const funcBarLabels[] = {" Done ", " Down ", " Up ", " Next"};
-static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow ", " Space "};
+static const char* const funcBarLabels[] = {" Done ", " Down ", " Up ", " Next ", NULL};
+static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow ", " Space ", NULL};
 static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP, ' '};
 
 enum {
@@ -377,7 +377,6 @@ static bool HelpScreen_atBottom(const Panel* panel) {
 }
 
 HelpScreen* HelpScreen_init(HelpScreen* self, const Settings* settings) {
-   // TODO: Add all functions to bar
    FunctionBar* bar = FunctionBar_new(funcBarLabels, funcBarKeys, funcBarEvents);
    self->display = Panel_new(0, 0, COLS, MAXIMUM(LINES - 1, 1), Class(HelpLine), true, bar);
    HelpScreen_addText(self, HELP_BOLD, "htop " VERSION " - " COPYRIGHT);
@@ -439,7 +438,6 @@ void HelpScreen_run(HelpScreen* self) {
             HelpScreen_scroll(panel, 1);
             break;
          case ' ':
-            HelpScreen_scroll(panel, 1);
             if (HelpScreen_atBottom(panel)) {
                clear();
                return;
