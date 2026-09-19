@@ -392,6 +392,7 @@ HelpScreen* HelpScreen_init(HelpScreen* self, const Settings* settings) {
    HelpScreen_addProcessStates(self);
    HelpScreen_addBlankLine(self);
    HelpScreen_addShortcuts(self);
+   HelpScreen_addBlankLine(self);
 
    clear();
    return self;
@@ -426,10 +427,14 @@ void HelpScreen_run(HelpScreen* self) {
             clear();
             break;
          case KEY_PPAGE:
+            HelpScreen_scroll(panel, -panel->h);
+            break;
          case KEY_UP:
             HelpScreen_scroll(panel, -1);
             break;
          case KEY_NPAGE:
+            HelpScreen_scroll(panel, panel->h);
+            break;
          case KEY_DOWN:
             HelpScreen_scroll(panel, 1);
             break;
@@ -439,6 +444,8 @@ void HelpScreen_run(HelpScreen* self) {
                clear();
                return;
             }
+            HelpScreen_scroll(panel, panel->h);
+            break;
          case KEY_CTRL('L'):
             clear();
             break;
