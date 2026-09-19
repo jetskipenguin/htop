@@ -27,7 +27,7 @@ in the source distribution for its full text.
 #include "XUtils.h"
 
 static const char* const funcBarLabels[] = {" Done ", " Down ", " Up ", " Next ", NULL};
-static const char* const funcBarKeys[] = {" Esc ", " Down Arrow ", " Up Arrow ", " Space ", NULL};
+static const char* const funcBarKeys[] = {" Esc/q ", " Down/PgDn ", " Up/PgUp ", " Space/Enter", NULL};
 static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP, ' '};
 
 enum {
@@ -414,12 +414,8 @@ void HelpScreen_run(HelpScreen* self) {
       switch (ch) {
          case ERR:
             continue;
-         case 13:
-         case KEY_ENTER:
          case 27:
          case 'q':
-         case KEY_F(1):
-         case KEY_F(10):
             clear();
             return;
          case KEY_RESIZE:
@@ -438,6 +434,8 @@ void HelpScreen_run(HelpScreen* self) {
          case KEY_DOWN:
             HelpScreen_scroll(panel, 1);
             break;
+         case 13:
+         case KEY_ENTER:
          case ' ':
             if (HelpScreen_atBottom(panel)) {
                clear();
