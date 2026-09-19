@@ -418,6 +418,7 @@ void HelpScreen_run(HelpScreen* self) {
          case KEY_ENTER:
          case 27:
          case 'q':
+         case KEY_F(1):
          case KEY_F(10):
             clear();
             return;
