@@ -53,6 +53,7 @@ myhtopsources = \
 	Hashtable.c \
 	Header.c \
 	HeaderOptionsPanel.c \
+	HelpScreen.c \
 	HostnameMeter.c \
 	History.c \
 	IncSet.c \
@@ -90,8 +91,7 @@ myhtopsources = \
 	UptimeMeter.c \
 	UsersTable.c \
 	Vector.c \
-	XUtils.c \
-	HelpScreen.c
+	XUtils.c
 
 myhtopheaders = \
 	Action.h \
@@ -122,6 +122,7 @@ myhtopheaders = \
 	Header.h \
 	HeaderLayout.h \
 	HeaderOptionsPanel.h \
+	HelpScreen.h \
 	HostnameMeter.h \
 	History.h \
 	IncSet.h \
@@ -165,8 +166,7 @@ myhtopheaders = \
 	UsersTable.h \
 	Vector.h \
 	XUtils.h \
-	generic/ProvideDemangle.h \
-	HelpScreen.h
+	generic/ProvideDemangle.h
 
 if HAVE_BACKTRACE_SCREEN
 myhtopheaders += \
