@@ -407,9 +407,9 @@ void HelpScreen_run(HelpScreen* self) {
    Panel* panel = self->display;
 
    while (true) {
-      // A full redraw without selection highlighting preserves the segment colors.
-      Panel_draw(panel, true, true, false, false);
-
+      if (panel->needsRedraw || panel->selected != panel->oldSelected) {
+         Panel_draw(panel, true, true, false, false);
+      }
       int ch = Panel_getCh(panel);
 
 #ifdef HAVE_GETMOUSE
@@ -459,6 +459,7 @@ void HelpScreen_run(HelpScreen* self) {
             break;
          case KEY_CTRL('L'):
             clear();
+            panel->needsRedraw = true;
             break;
          default:
             Panel_onKey(panel, ch);
