@@ -703,7 +703,7 @@ static Htop_Reaction actionHelp(State* st) {
    HelpScreen_init(&screen, st->host->settings);
    HelpScreen_run(&screen);
    HelpScreen_done(&screen);
-   return HTOP_RECALCULATE | HTOP_REDRAW_BAR | HTOP_KEEP_FOLLOWING;
+   return HTOP_RECALCULATE | HTOP_RESIZE | HTOP_KEEP_FOLLOWING;
 }
 
 static Htop_Reaction actionUntagAll(State* st) {
