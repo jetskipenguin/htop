@@ -28,7 +28,7 @@ in the source distribution for its full text.
 
 static const char* const funcBarLabels[] = {" Done ", " Down ", " Up ", " Next ", NULL};
 static const char* const funcBarKeys[] = {" Esc/q ", " Down/PgDn ", " Up/PgUp ", " Space/Enter", NULL};
-static const int funcBarEvents[] = {27, KEY_DOWN, KEY_UP, ' '};
+static const int funcBarEvents[] = {27, KEY_NPAGE, KEY_PPAGE, ' '};
 
 enum {
    HELP_LEFT_COLUMN = 1,
@@ -411,6 +411,20 @@ void HelpScreen_run(HelpScreen* self) {
       Panel_draw(panel, true, true, false, false);
 
       int ch = Panel_getCh(panel);
+
+#ifdef HAVE_GETMOUSE
+      if (ch == KEY_MOUSE) {
+         MEVENT event;
+         ch = ERR;
+
+         if (getmouse(&event) == OK &&
+            (event.bstate & BUTTON1_RELEASED) &&
+            event.y == LINES - 1) {
+            ch = FunctionBar_synthesizeEvent(panel->currentBar, event.x);
+         }
+      }
+#endif
+
       switch (ch) {
          case ERR:
             continue;
